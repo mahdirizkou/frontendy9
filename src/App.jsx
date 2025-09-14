@@ -1,13 +1,15 @@
-import React from 'react';
-import Login from './login'; // Import your Login component
+// App.jsx
+import { Routes, Route } from "react-router-dom";
+import Login from "./login";
+import Profile from "./profile";
 
-// Method 1: Simple direct use
 function App() {
   return (
-    <div className="App">
-      <Login />
-      {/* <register /> */}
-    </div>
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/profile" element={<Profile />} />
+    </Routes>
   );
 }
+
 export default App;

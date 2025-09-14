@@ -1,12 +1,15 @@
-
-import React, { useState } from "react";
-import "./login.css"; // Import the CSS file
+import React, { useState, useContext } from "react";
+import "./login.css";
+import { UserContext } from "./UserContext"; 
+import { useNavigate } from "react-router-dom";
 
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
+  const { login } = useContext(UserContext); // login context
+  const navigate = useNavigate();
 
   const validate = () => {
     if (!username) return "Username is required";
@@ -15,37 +18,33 @@ function Login() {
     return "";
   };
 
-const handleSubmit = (e) => {
-  e.preventDefault();
-  const v = validate();
-  if (v) {
-    setError(v);
-    return;
-  }
-  setError("");
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const v = validate();
+    if (v) {
+      setError(v);
+      return;
+    }
+    setError("");
 
-  fetch("http://127.0.0.1:8000/yalahntla9aw/login/", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ username, password }),
-  })
-    .then((res) => res.json())
-    .then((data) => {
-      console.log("Response from backend:", data); 
-      if (data) {
-        alert("Login successful");
-        localStorage.setItem("access_token", data.tokens.access);
-        localStorage.setItem("refresh_token", data.tokens.refresh);
-        navigate("/profile");
-        // add routing de profile 
-      } else {
-        setError(data.error || "Login failed");
-      }
+    fetch("http://127.0.0.1:8000/yalahntla9aw/login/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
     })
-    .catch((err) => setError("Network error: " + err.message));
-};
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Response from backend:", data);
+        if (data && data.tokens) {
+          // context
+          login(data.user, data.tokens); 
+          navigate("/profile");
+        } else {
+          setError(data.error || "Login failed");
+        }
+      })
+      .catch((err) => setError("Network error: " + err.message));
+  };
 
 
 
