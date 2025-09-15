@@ -1,4 +1,4 @@
-import { createContext, useState } from "react";
+import { createContext, useState, useEffect } from "react";
 
 export const UserContext = createContext();
 
@@ -6,6 +6,19 @@ export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null); 
   const [accessToken, setAccessToken] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
+
+  
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    const savedAccess = localStorage.getItem("access_token");
+    const savedRefresh = localStorage.getItem("refresh_token");
+
+    if (savedUser && savedAccess && savedRefresh) {
+      setUser(JSON.parse(savedUser));
+      setAccessToken(savedAccess);
+      setRefreshToken(savedRefresh);
+    }
+  }, []);
 
   const login = (userData, tokens) => {
     setUser(userData);

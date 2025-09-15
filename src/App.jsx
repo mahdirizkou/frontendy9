@@ -1,13 +1,13 @@
 // App.jsx
 import { Routes, Route } from "react-router-dom";
 import Login from "./login";
-import Profile from "./profile";
+import Home from "./home";
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
-      <Route path="/profile" element={<Profile />} />
+      <Route path="/home" element={<Home />} />
     </Routes>
   );
 }

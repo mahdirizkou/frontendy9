@@ -38,7 +38,7 @@ function Login() {
         if (data && data.tokens) {
           // context
           login(data.user, data.tokens); 
-          navigate("/profile");
+          navigate("/home");
         } else {
           setError(data.error || "Login failed");
         }
