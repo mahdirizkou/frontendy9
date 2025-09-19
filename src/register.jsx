@@ -3,16 +3,19 @@ import "./login.css";
 import { UserContext } from "./UserContext"; 
 import { useNavigate } from "react-router-dom";
 
-function Login() {
+function Register() {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
-  const { login } = useContext(UserContext); // login context
+  const { login } = useContext(UserContext);
   const navigate = useNavigate();
 
   const validate = () => {
     if (!username) return "Username is required";
+    if (!email) return "Email is required";
     if (!password) return "Password is required";
     if (password.length < 6) return "Password must be at least 6 characters";
     return "";
@@ -27,31 +30,35 @@ function Login() {
     }
     setError("");
 
-    fetch("http://127.0.0.1:8000/yalahntla9aw/login/", {
+    fetch("http://127.0.0.1:8000/yalahntla9aw/register/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        first_name: firstName,
+        last_name: lastName,
+      }),
     })
       .then((res) => res.json())
       .then((data) => {
         console.log("Response from backend:", data);
         if (data && data.tokens) {
-          // context
-          login(data.user, data.tokens); 
+          // context in login
+          login(data.user, data.tokens);
           navigate("/face");
         } else {
-          setError(data.error || "Login failed");
+          setError(data.error || "Registration failed");
         }
       })
       .catch((err) => setError("Network error: " + err.message));
   };
 
-
-
   return (
     <div className="login-container">
-      <h1 className="login-title">Login</h1>
-      <p className="login-subtitle">Welcome back! Please enter your details.</p>
+      <h1 className="login-title">Register</h1>
+      <p className="login-subtitle">Create your account to get started.</p>
 
       {error && <div className="error-message">{error}</div>}
 
@@ -69,6 +76,42 @@ function Login() {
         </div>
 
         <div className="form-group">
+          <label className="form-label" htmlFor="email">Email:</label>
+          <input
+            id="email"
+            type="email"
+            className="form-input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter your email"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="firstName">First Name:</label>
+          <input
+            id="firstName"
+            type="text"
+            className="form-input"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Enter your first name"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" htmlFor="lastName">Last Name:</label>
+          <input
+            id="lastName"
+            type="text"
+            className="form-input"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Enter your last name"
+          />
+        </div>
+
+        <div className="form-group">
           <label className="form-label" htmlFor="password">Password:</label>
           <input
             id="password"
@@ -80,28 +123,16 @@ function Login() {
           />
         </div>
 
-        <div className="remember-forgot-section">
-          <label className="remember-me">
-            <input
-              type="checkbox"
-              className="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-            />
-            Remember me
-          </label>
-          <a href="#" className="forgot-password">Forgot password?</a>
-        </div>
-
-        <button type="submit" className="submit-button">Sign In</button>
+        <button type="submit" className="submit-button">Sign Up</button>
       </form>
 
       <div className="signup-section">
         <p>
-          Don't have an account? <a href="#" className="signup-link">Sign Up</a>
+          Already have an account?{" "}
+          <a href="/login" className="signup-link">Login</a>
         </p>
       </div>
     </div>
   );
 }
-export default Login
+export default Register;

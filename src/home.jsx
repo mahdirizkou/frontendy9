@@ -1,10 +1,12 @@
 import React, { useContext, useEffect, useState } from "react";
 import { UserContext } from "./UserContext";
 import "./Home.css";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
   const { user, logout, accessToken } = useContext(UserContext);
   const [clubs, setClubs] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchClubs = async () => {
@@ -43,10 +45,9 @@ export default function Home() {
         <button onClick={logout} className="logout-btn">Logout</button>
         <nav>
           <ul>
-            <li>Home</li>
-            <li>Explore</li>
-            <li>Messages</li>
-            <li>Settings</li>
+          <li onClick={() => navigate("/register")}>Explore</li>
+          <li onClick={() => navigate("/my-clubs")}>The clubs I joined</li>
+          <li onClick={() => navigate("/settings")}>Settings</li>
           </ul>
         </nav>
       </aside>
@@ -60,7 +61,7 @@ export default function Home() {
               <div className="post-content">
                 <h3>{club.name}</h3>
                 <p>{club.description}</p>
-                <span>{club.category} | {club.city}</span>
+                <span>{club.category} | {club.city} | {club.creator.username}</span>
               </div>
             </div>
           ))
