@@ -98,7 +98,14 @@ function Login() {
 
       <div className="signup-section">
         <p>
-          Don't have an account? <a href="#" className="signup-link">Sign Up</a>
+          Don't have an account?{" "}
+          <span 
+            className="signup-link" 
+            onClick={() => navigate("/register")} 
+            style={{ cursor: "pointer" }}
+          >
+            Sign Up
+          </span>
         </p>
       </div>
     </div>
