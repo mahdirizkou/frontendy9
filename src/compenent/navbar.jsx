@@ -1,9 +1,10 @@
 import { Mail, Notifications, Pets } from "@mui/icons-material";
 import { AppBar, Badge, Box, styled, Toolbar, Typography } from "@mui/material";
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useCallback } from "react";
 import { UserContext } from "../UserContext";
-
 import StoreLogo from "../store.png";
+
+const API_BASE = "http://127.0.0.1:8000/yalahntla9aw";
 
 const StyledToolbar = styled(Toolbar)({
   display: "flex",
@@ -21,7 +22,7 @@ const Icons = styled(Box)(({ theme }) => ({
 }));
 
 const CenterLogo = styled("img")({
-  height: 80, 
+  height: 80,
   objectFit: "contain",
 });
 
@@ -30,154 +31,150 @@ const Navbar = ({ setActiveComponent }) => {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const { accessToken, user } = useContext(UserContext);
 
-  
-  useEffect(() => {
-    const fetchNotificationCount = async () => {
-      if (!user?.id || !accessToken) return;
+  // ── Notification count: only count UNREAD notifications + pending membership requests ──
+  const fetchNotificationCount = useCallback(async () => {
+    if (!user?.id || !accessToken) return;
 
-      try {
-        let totalCount = 0;
+    try {
+      let total = 0;
 
-        const clubsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/clubs/", {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (clubsResponse.ok) {
-          const clubsData = await clubsResponse.json();
-          const myClubs = clubsData.filter(club => club.creator.id === user.id);
-
-          for (const club of myClubs) {
-            try {
-              const requestsResponse = await fetch(
-                `http://127.0.0.1:8000/yalahntla9aw/clubs/${club.club_id}/requests/`,
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${accessToken}`,
-                  },
-                }
-              );
-
-              if (requestsResponse.ok) {
-                const requests = await requestsResponse.json();
-                totalCount += requests.length;
-              }
-            } catch (error) {
-              console.error(`Error fetching requests for club ${club.club_id}:`, error);
-            }
-          }
-        }
-
-        const notificationsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/notifications/", {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-
-        if (notificationsResponse.ok) {
-          const notificationsData = await notificationsResponse.json();
-          const userNotifications = notificationsData.filter(notif => notif.user.id === user.id);
-          totalCount += userNotifications.length;
-        }
-
-        setNotificationCount(totalCount);
-      } catch (error) {
-        console.error("Error fetching notification count:", error);
+      // Count unread system notifications for this user
+      const notifRes = await fetch(`${API_BASE}/notifications/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (notifRes.ok) {
+        const data = await notifRes.json();
+        const unread = data.filter(n => n.user.id === user.id && !n.is_read);
+        total += unread.length;
       }
-    };
 
+      // Count pending membership requests for clubs the user created
+      const clubsRes = await fetch(`${API_BASE}/clubs/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (clubsRes.ok) {
+        const clubs = await clubsRes.json();
+        const myClubs = clubs.filter(c => c.creator?.id === user.id);
+
+        const requestCounts = await Promise.all(
+          myClubs.map(async (club) => {
+            try {
+              const res = await fetch(`${API_BASE}/clubs/${club.club_id}/requests/`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (res.ok) {
+                const reqs = await res.json();
+                return reqs.length; // already filtered to pending on the backend
+              }
+            } catch {
+              // ignore per-club errors
+            }
+            return 0;
+          })
+        );
+        total += requestCounts.reduce((sum, n) => sum + n, 0);
+      }
+
+      setNotificationCount(total);
+    } catch (error) {
+      console.error("Error fetching notification count:", error);
+    }
+  }, [accessToken, user?.id]);
+
+  // ── Message unread count ──
+  const fetchUnreadMessages = useCallback(async () => {
+    if (!user?.id || !accessToken) return;
+
+    try {
+      let totalUnread = 0;
+
+      // Get all clubs
+      const clubsRes = await fetch(`${API_BASE}/clubs/`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!clubsRes.ok) return;
+      const allClubs = await clubsRes.json();
+
+      // Creator clubs — no membership check needed
+      const creatorClubs = allClubs
+        .filter(c => c.creator?.id === user.id)
+        .map(c => ({ ...c, club_id: c.club_id || c.id }));
+
+      // Member clubs — check /members/
+      const nonCreatorClubs = allClubs.filter(c => c.creator?.id !== user.id);
+      const memberClubChecks = await Promise.all(
+        nonCreatorClubs.map(async (club) => {
+          const clubId = club.club_id || club.id;
+          try {
+            const res = await fetch(`${API_BASE}/clubs/${clubId}/members/`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (!res.ok) return null;
+            const members = await res.json();
+            return members.some(m => m.user?.id === user.id)
+              ? { ...club, club_id: clubId }
+              : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const userClubs = [...creatorClubs, ...memberClubChecks.filter(Boolean)];
+
+      // For each club, count messages from the last 24 hours not sent by the current user
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+      const messageCounts = await Promise.all(
+        userClubs.map(async (club) => {
+          try {
+            const res = await fetch(`${API_BASE}/clubs/${club.club_id}/messages/`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (!res.ok) return 0;
+            const msgs = await res.json();
+            if (!Array.isArray(msgs)) return 0;
+            return msgs.filter(m =>
+              new Date(m.created_at) > oneDayAgo && m.sender?.id !== user.id
+            ).length;
+          } catch {
+            return 0;
+          }
+        })
+      );
+
+      totalUnread = messageCounts.reduce((sum, n) => sum + n, 0);
+      setUnreadMessagesCount(totalUnread);
+    } catch (error) {
+      console.error("Error fetching unread messages:", error);
+    }
+  }, [accessToken, user?.id]);
+
+  useEffect(() => {
     fetchNotificationCount();
     const interval = setInterval(fetchNotificationCount, 60000);
     return () => clearInterval(interval);
-  }, [accessToken, user?.id]);
+  }, [fetchNotificationCount]);
 
-  
   useEffect(() => {
-    const fetchUnreadMessages = async () => {
-      if (!user?.id || !accessToken) return;
-
-      try {
-        let totalUnreadCount = 0;
-        
-       
-        try {
-          const allClubsMembersResponse = await fetch('http://127.0.0.1:8000/yalahntla9aw/all-clubs-members/', {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (allClubsMembersResponse.ok) {
-            const allClubsData = await allClubsMembersResponse.json();
-            
-           
-            const userClubs = allClubsData.filter(club => 
-              club.members && club.members.some(member => 
-                member.user && member.user.id === user.id
-              )
-            );
-
-           
-            for (const club of userClubs) {
-              try {
-                const messagesResponse = await fetch(`http://127.0.0.1:8000/yalahntla9aw/clubs/${club.club_id || club.id}/messages/`, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                  },
-                });
-
-                if (messagesResponse.ok) {
-                  const messages = await messagesResponse.json();
-                  if (Array.isArray(messages)) {
-                    
-                    const oneDayAgo = new Date();
-                    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-                    
-                    const newMessages = messages.filter(message => {
-                      const messageDate = new Date(message.created_at);
-                      return messageDate > oneDayAgo && message.sender?.id !== user.id;
-                    });
-                    
-                    totalUnreadCount += newMessages.length;
-                  }
-                }
-              } catch (error) {
-                console.error(`Error fetching messages for club ${club.club_id || club.id}:`, error);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching clubs data:', error);
-        }
-
-        setUnreadMessagesCount(totalUnreadCount);
-      } catch (error) {
-        console.error('Error fetching unread messages:', error);
-      }
-    };
-
     fetchUnreadMessages();
-    
     const interval = setInterval(fetchUnreadMessages, 30000);
     return () => clearInterval(interval);
-  }, [user?.id, accessToken]);
+  }, [fetchUnreadMessages]);
 
   const handleNotificationClick = () => {
     if (setActiveComponent) {
       setActiveComponent('notifications');
+      // ✅ Reset badge immediately — the notification page will mark them read
+      setNotificationCount(0);
     }
   };
 
   const handleMessagesClick = () => {
     if (setActiveComponent) {
       setActiveComponent('messagerie');
-     
+      // ✅ Reset badge immediately when user opens messages
       setUnreadMessagesCount(0);
     }
   };
@@ -185,28 +182,25 @@ const Navbar = ({ setActiveComponent }) => {
   return (
     <AppBar position="sticky" sx={{ backgroundColor: "#6a0dad" }}>
       <StyledToolbar>
-       
         <Typography variant="h6" sx={{ display: { xs: "none", sm: "block" } }}>
           YalaH ntla9aw
         </Typography>
 
-       
         <Box sx={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
           <CenterLogo src={StoreLogo} alt="Store Logo" />
         </Box>
 
-      
         <Icons>
-          <Badge 
-            badgeContent={unreadMessagesCount} 
+          <Badge
+            badgeContent={unreadMessagesCount}
             color="error"
             sx={{ cursor: 'pointer' }}
             onClick={handleMessagesClick}
           >
             <Mail />
           </Badge>
-          <Badge 
-            badgeContent={notificationCount} 
+          <Badge
+            badgeContent={notificationCount}
             color="error"
             sx={{ cursor: 'pointer' }}
             onClick={handleNotificationClick}
@@ -215,7 +209,6 @@ const Navbar = ({ setActiveComponent }) => {
           </Badge>
         </Icons>
 
-        
         <Pets sx={{ display: { xs: "block", sm: "none" } }} />
       </StyledToolbar>
     </AppBar>

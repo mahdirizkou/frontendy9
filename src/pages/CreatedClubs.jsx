@@ -1,13 +1,13 @@
-import { 
-  Box, 
-  Typography, 
-  Stack, 
-  Skeleton, 
-  Card, 
-  CardContent, 
-  CardMedia, 
-  Avatar, 
-  Chip, 
+import {
+  Box,
+  Typography,
+  Stack,
+  Skeleton,
+  Card,
+  CardContent,
+  CardMedia,
+  Avatar,
+  Chip,
   Grid,
   Button,
   Dialog,
@@ -20,26 +20,25 @@ import {
   Snackbar,
   CardActions
 } from "@mui/material";
-import { 
-  Add, 
-  Close, 
-  Image, 
+import {
+  Add,
+  Close,
+  Image,
   Send,
-  PostAdd 
+  PostAdd
 } from "@mui/icons-material";
 import React, { useState, useEffect, useContext } from "react";
 import { UserContext } from "../UserContext";
 
 const CreatedClubs = () => {
-  const { accessToken, user } = useContext(UserContext); 
+  const { accessToken, user } = useContext(UserContext);
   const [loading, setLoading] = useState(true);
   const [createdClubs, setCreatedClubs] = useState([]);
-  
 
   const [createPostDialog, setCreatePostDialog] = useState(false);
   const [selectedClub, setSelectedClub] = useState(null);
+  // ✅ Removed title - backend has no title field
   const [postData, setPostData] = useState({
-    title: '',
     content: '',
     image_url: ''
   });
@@ -63,11 +62,11 @@ const CreatedClubs = () => {
         if (!response.ok) throw new Error("Failed to fetch clubs");
 
         const data = await response.json();
-        
-        const userCreatedClubs = data.filter(club => 
+
+        const userCreatedClubs = data.filter(club =>
           club.creator && club.creator.id === user?.id
         );
-        
+
         setCreatedClubs(userCreatedClubs);
       } catch (error) {
         console.error(error);
@@ -83,18 +82,18 @@ const CreatedClubs = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
   const handleCreatePostClick = (club) => {
     setSelectedClub(club);
     setCreatePostDialog(true);
+    // ✅ Reset without title
     setPostData({
-      title: '',
       content: '',
       image_url: ''
     });
@@ -104,7 +103,6 @@ const CreatedClubs = () => {
     setCreatePostDialog(false);
     setSelectedClub(null);
     setPostData({
-      title: '',
       content: '',
       image_url: ''
     });
@@ -118,10 +116,11 @@ const CreatedClubs = () => {
   };
 
   const handleCreatePost = async () => {
-    if (!postData.title.trim() || !postData.content.trim()) {
+    // ✅ Only validate content
+    if (!postData.content.trim()) {
       setSnackbar({
         open: true,
-        message: 'Please fill in both title and content',
+        message: 'Please fill in the content',
         severity: 'error'
       });
       return;
@@ -130,28 +129,38 @@ const CreatedClubs = () => {
     setIsSubmitting(true);
 
     try {
+      // ✅ Send exactly what backend expects
       const postPayload = {
-        title: postData.title,
         content: postData.content,
-        club: selectedClub.club_id,
-        ...(postData.image_url && { image_url: postData.image_url })
+        club_id: selectedClub.club_id,  // ✅ was "club", must be "club_id"
       };
+
+      // ✅ Only include image_url if not empty
+      if (postData.image_url.trim()) {
+        postPayload.image_url = postData.image_url;
+      }
+
+      console.log("Sending payload:", postPayload); // ✅ debug log
 
       const response = await fetch("http://127.0.0.1:8000/yalahntla9aw/posts/", {
         method: 'POST',
         headers: {
           "Content-Type": "application/json",
-          Authorization: accessToken ? `Bearer ${accessToken}` : "",
+          Authorization: `Bearer ${accessToken}`, // ✅ must have token
         },
         body: JSON.stringify(postPayload),
       });
 
+      // ✅ Log exact error from backend
       if (!response.ok) {
-        throw new Error("Failed to create post");
+        const errorData = await response.json();
+        console.error("Backend error:", errorData);
+        throw new Error(JSON.stringify(errorData));
       }
 
       const newPost = await response.json();
-      
+      console.log("Post created successfully:", newPost);
+
       setSnackbar({
         open: true,
         message: `Post created successfully for ${selectedClub.name}!`,
@@ -159,6 +168,7 @@ const CreatedClubs = () => {
       });
 
       handleCloseDialog();
+
     } catch (error) {
       console.error("Error creating post:", error);
       setSnackbar({
@@ -176,10 +186,10 @@ const CreatedClubs = () => {
   };
 
   return (
-    <Box 
-      flex={4} 
+    <Box
+      flex={4}
       p={{ xs: 0, md: 2 }}
-      sx={{ 
+      sx={{
         minHeight: '100vh',
         bgcolor: 'background.default'
       }}
@@ -187,7 +197,7 @@ const CreatedClubs = () => {
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
         My Created Clubs
       </Typography>
-      
+
       {loading ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((item) => (
@@ -207,8 +217,8 @@ const CreatedClubs = () => {
         <Grid container spacing={3}>
           {createdClubs.map((club) => (
             <Grid item xs={12} sm={6} md={4} key={club.club_id}>
-              <Card 
-                sx={{ 
+              <Card
+                sx={{
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
@@ -223,52 +233,43 @@ const CreatedClubs = () => {
                   }
                 }}
               >
-                {/* Club Image */}
                 <CardMedia
                   component="img"
-                  sx={{ 
-                    height: 200,
-                    objectFit: 'cover'
-                  }}
+                  sx={{ height: 200, objectFit: 'cover' }}
                   image={club.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}
                   alt={club.name}
                 />
 
-                {/* Club Content */}
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  {/* Header with Name and Category */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1 }}>
                       {club.name}
                     </Typography>
-                    <Chip 
-                      label={club.category} 
-                      size="small" 
-                      color="primary" 
+                    <Chip
+                      label={club.category}
+                      size="small"
+                      color="primary"
                       variant="outlined"
                     />
                   </Box>
 
-                  {/* Creator Badge */}
                   <Box sx={{ mb: 2 }}>
-                    <Chip 
-                      label="👑 Owner" 
-                      size="small" 
-                      color="warning" 
+                    <Chip
+                      label="👑 Owner"
+                      size="small"
+                      color="warning"
                       sx={{ fontWeight: 'bold' }}
                     />
                   </Box>
 
-                  {/* Description */}
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary" 
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
                     sx={{ mb: 2, flex: 1 }}
                   >
                     {club.description}
                   </Typography>
 
-                  {/* Location and Creation Date */}
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                       📍 {club.city}
@@ -278,15 +279,9 @@ const CreatedClubs = () => {
                     </Typography>
                   </Box>
 
-                  {/* Creator Info */}
                   <Box sx={{ display: 'flex', alignItems: 'center', mt: 'auto' }}>
-                    <Avatar 
-                      sx={{ 
-                        bgcolor: 'primary.main', 
-                        mr: 1,
-                        width: 32,
-                        height: 32
-                      }}
+                    <Avatar
+                      sx={{ bgcolor: 'primary.main', mr: 1, width: 32, height: 32 }}
                     >
                       {club.creator?.username ? club.creator.username[0].toUpperCase() : 'Y'}
                     </Avatar>
@@ -301,18 +296,13 @@ const CreatedClubs = () => {
                   </Box>
                 </CardContent>
 
-                {/* Create Post Action */}
                 <CardActions sx={{ justifyContent: 'center', pb: 2 }}>
                   <Button
                     variant="contained"
                     color="primary"
                     startIcon={<PostAdd />}
                     onClick={() => handleCreatePostClick(club)}
-                    sx={{ 
-                      width: '90%',
-                      borderRadius: 2,
-                      fontWeight: 'bold'
-                    }}
+                    sx={{ width: '90%', borderRadius: 2, fontWeight: 'bold' }}
                   >
                     Create Post
                   </Button>
@@ -332,9 +322,9 @@ const CreatedClubs = () => {
         </Box>
       )}
 
-      {/* Create Post Dialog */}
-      <Dialog 
-        open={createPostDialog} 
+      {/* ✅ Create Post Dialog - no title field */}
+      <Dialog
+        open={createPostDialog}
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
@@ -356,25 +346,17 @@ const CreatedClubs = () => {
                 Creating post for: <strong>{selectedClub.name}</strong>
               </Alert>
 
-              <TextField
-                fullWidth
-                label="Post Title"
-                value={postData.title}
-                onChange={handlePostDataChange('title')}
-                margin="normal"
-                required
-                placeholder="Enter an engaging title for your post..."
-              />
+              {/* ✅ Removed title field - backend has no title */}
 
               <TextField
                 fullWidth
-                label="Post Content"
+                label="Post Content *"
                 value={postData.content}
                 onChange={handlePostDataChange('content')}
                 margin="normal"
                 required
                 multiline
-                rows={4}
+                rows={5}
                 placeholder="Write your post content here..."
               />
 
@@ -398,15 +380,10 @@ const CreatedClubs = () => {
                   <Card>
                     <CardMedia
                       component="img"
-                      sx={{ 
-                        height: 200,
-                        objectFit: 'cover'
-                      }}
+                      sx={{ height: 200, objectFit: 'cover' }}
                       image={postData.image_url}
                       alt="Post preview"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
                     />
                   </Card>
                 </Box>
@@ -416,32 +393,29 @@ const CreatedClubs = () => {
         </DialogContent>
 
         <DialogActions sx={{ p: 2 }}>
-          <Button 
-            onClick={handleCloseDialog} 
-            disabled={isSubmitting}
-          >
+          <Button onClick={handleCloseDialog} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleCreatePost}
             variant="contained"
             startIcon={<Send />}
-            disabled={isSubmitting || !postData.title.trim() || !postData.content.trim()}
+            disabled={isSubmitting || !postData.content.trim()}
           >
             {isSubmitting ? 'Creating...' : 'Create Post'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert 
-          onClose={handleSnackbarClose} 
+        <Alert
+          onClose={handleSnackbarClose}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >

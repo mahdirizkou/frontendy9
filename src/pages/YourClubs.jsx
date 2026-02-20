@@ -1,308 +1,410 @@
-import { 
-  Box, 
-  Typography, 
-  Card, 
-  CardContent, 
-  Avatar, 
-  Chip, 
-  Grid, 
-  Skeleton,
-  CardMedia,
-  Divider,
-  Stack,
-  IconButton,
-  CardActions
+import {
+  Box, Typography, Stack, Skeleton, Card, CardContent, CardMedia, Avatar,
+  Chip, Grid, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Alert, Snackbar
 } from "@mui/material";
-import { 
-  Groups, 
-  AccessTime, 
-  LocationOn,
-  FavoriteOutlined,
-  ChatBubbleOutline,
-  Share,
-  MoreVert
-} from "@mui/icons-material";
+import { Add, PostAdd } from "@mui/icons-material";
 import React, { useState, useEffect, useContext } from "react";
 import { UserContext } from "../UserContext";
 
-const YourClubs = () => {
+const JoinClub = () => {
   const { accessToken, user } = useContext(UserContext);
   const [loading, setLoading] = useState(true);
   const [joinedClubs, setJoinedClubs] = useState([]);
-  const [clubPosts, setClubPosts] = useState([]);
+  const [clubsDetails, setClubsDetails] = useState([]);
+
+  // Post creation states
+  const [openCreatePost, setOpenCreatePost] = useState(false);
+  const [selectedClub, setSelectedClub] = useState(null);
+  const [postData, setPostData] = useState({
+    content: '',
+    image_url: ''
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   useEffect(() => {
-    const fetchJoinedClubsAndPosts = async () => {
+    const fetchJoinedClubs = async () => {
       try {
-        // جلب النوادي التي انضم إليها المستخدم
-        const joinedClubsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/userclubs/", {
+        const response = await fetch("http://127.0.0.1:8000/yalahntla9aw/userclubs/", {
           headers: {
             "Content-Type": "application/json",
             Authorization: accessToken ? `Bearer ${accessToken}` : "",
           },
         });
 
-        if (!joinedClubsResponse.ok) throw new Error("Failed to fetch joined clubs");
+        if (!response.ok) throw new Error("Failed to fetch joined clubs");
 
-        const joinedClubsData = await joinedClubsResponse.json();
-        setJoinedClubs(joinedClubsData);
+        const joinedData = await response.json();
+        console.log("Joined clubs data:", joinedData); // ✅ Debug log
+        setJoinedClubs(joinedData);
 
-        // جلب جميع المنشورات
-        const postsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/posts/", {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: accessToken ? `Bearer ${accessToken}` : "",
-          },
-        });
+        if (joinedData.length > 0) {
+          const clubDetailsPromises = joinedData.map(async (joinRecord) => {
+            try {
+              // ✅ joinRecord.club is now an OBJECT with club_id property (from ClubSerializer)
+              const clubId = joinRecord.club?.club_id || joinRecord.club;
+              console.log("Fetching club:", clubId); // ✅ Debug log
 
-        if (!postsResponse.ok) throw new Error("Failed to fetch posts");
+              const clubResponse = await fetch(`http://127.0.0.1:8000/yalahntla9aw/clubs/${clubId}/`, {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: accessToken ? `Bearer ${accessToken}` : "",
+                },
+              });
 
-        const allPosts = await postsResponse.json();
+              if (clubResponse.ok) {
+                const clubData = await clubResponse.json();
+                return {
+                  ...clubData,
+                  joinDate: joinRecord.date_joined,  // ✅ Use date_joined from UserClub
+                  joinId: joinRecord.id,
+                  joinedUser: joinRecord.user
+                };
+              }
+              return null;
+            } catch (error) {
+              console.error(`Error fetching club ${joinRecord.club}:`, error);
+              return null;
+            }
+          });
 
-        // IDs النوادي التي انضم إليها
-        const joinedClubIds = joinedClubsData.map(joinedClub => joinedClub.club);
-
-        // فلترة المنشورات للنوادي المنضم إليها فقط
-        const filteredPosts = allPosts.filter(post => 
-          joinedClubIds.includes(post.club.club_id)
-        );
-
-        // إضافة بيانات النادي مباشرة (من post.club)
-        const postsWithClubDetails = filteredPosts.map(post => ({
-          ...post,
-          clubDetails: post.club
-        }));
-
-        // ترتيب المنشورات حسب التاريخ (الأحدث أولاً)
-        postsWithClubDetails.sort((a, b) => new Date(b.date_post) - new Date(a.date_post));
-        setClubPosts(postsWithClubDetails);
+          const clubsData = await Promise.all(clubDetailsPromises);
+          setClubsDetails(clubsData.filter(club => club !== null));
+        }
 
       } catch (error) {
-        console.error("Error fetching joined clubs and posts:", error);
+        console.error(error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchJoinedClubsAndPosts();
-  }, [accessToken, user]);
+    fetchJoinedClubs();
+  }, [accessToken]);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return "Just now";
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`;
-    
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
-  const truncateText = (text, maxLength = 200) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
+  const handleCreatePost = (club) => {
+    setSelectedClub(club);
+    setOpenCreatePost(true);
+  };
+
+  const handleCloseCreatePost = () => {
+    setOpenCreatePost(false);
+    setSelectedClub(null);
+    setPostData({
+      content: '',
+      image_url: ''
+    });
+  };
+
+  const handlePostSubmit = async () => {
+    if (!postData.content.trim()) {
+      setSnackbar({
+        open: true,
+        message: 'Please fill in the content',
+        severity: 'error'
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const body = {
+        content: postData.content,
+        club_id: selectedClub.club_id,
+      };
+
+      if (postData.image_url.trim()) {
+        body.image_url = postData.image_url;
+      }
+
+      const postResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/posts/", {
+        method: 'POST',
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!postResponse.ok) {
+        const errorData = await postResponse.json();
+        console.error("Backend error:", errorData);
+        throw new Error(JSON.stringify(errorData));
+      }
+
+      const newPost = await postResponse.json();
+      console.log("Post created:", newPost);
+
+      try {
+        await fetch("http://127.0.0.1:8000/yalahntla9aw/notifications/", {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            user_id: selectedClub.creator.id,
+            club_id: selectedClub.club_id,
+            message: `New post submitted by ${user.username} in ${selectedClub.name}.`,
+          }),
+        });
+      } catch (notifError) {
+        console.warn("Notification failed:", notifError);
+      }
+
+      setSnackbar({
+        open: true,
+        message: 'Post created successfully!',
+        severity: 'success'
+      });
+
+      handleCloseCreatePost();
+
+    } catch (error) {
+      console.error('Error creating post:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to create post. Please try again.',
+        severity: 'error'
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInputChange = (field, value) => {
+    setPostData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   return (
-    <Box 
-      flex={4} 
+    <Box
+      flex={4}
       p={{ xs: 0, md: 2 }}
-      sx={{ 
+      sx={{
         minHeight: '100vh',
         bgcolor: 'background.default'
       }}
     >
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
-        <Groups sx={{ mr: 1, verticalAlign: 'middle' }} />
-        Your Clubs Feed
+        Clubs I Joined
       </Typography>
 
-      {/* عرض النوادي المنضم إليها */}
-      <Card sx={{ mb: 3, p: 2 }}>
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-          Your Joined Clubs ({joinedClubs.length})
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          {joinedClubs.length > 0 ? (
-            joinedClubs.map((joinedClub, index) => (
-              <Chip 
-                key={index}
-                label={`Club ID: ${joinedClub.club}`}
-                color="primary" 
-                variant="outlined"
-                size="small"
-              />
-            ))
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              You haven't joined any clubs yet
-            </Typography>
-          )}
-        </Box>
-        {clubPosts.length > 0 && (
-          <Typography variant="caption" color="success.main" sx={{ mt: 1, display: 'block' }}>
-            Found {clubPosts.length} posts from your clubs
-          </Typography>
-        )}
-      </Card>
-      
       {loading ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((item) => (
-            <Grid item xs={12} key={item}>
-              <Card sx={{ mb: 2 }}>
+            <Grid item xs={12} sm={6} md={4} key={item}>
+              <Card>
+                <Skeleton variant="rectangular" height={200} />
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Skeleton variant="circular" width={40} height={40} />
-                    <Box sx={{ ml: 2, flex: 1 }}>
-                      <Skeleton variant="text" height={20} width="60%" />
-                      <Skeleton variant="text" height={16} width="40%" />
-                    </Box>
-                  </Box>
+                  <Skeleton variant="text" height={30} />
                   <Skeleton variant="text" height={20} />
                   <Skeleton variant="text" height={20} />
-                  <Skeleton variant="rectangular" height={200} sx={{ mt: 2 }} />
                 </CardContent>
               </Card>
             </Grid>
           ))}
         </Grid>
-      ) : clubPosts.length > 0 ? (
-        <Grid container spacing={2}>
-          {clubPosts.map((post) => (
-            <Grid item xs={12} key={post.id_post}>
-              <Card 
-                sx={{ 
-                  mb: 2,
+      ) : clubsDetails.length > 0 ? (
+        <Grid container spacing={3}>
+          {clubsDetails.map((club) => (
+            <Grid item xs={12} sm={6} md={4} key={club.club_id}>
+              <Card
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
                   borderRadius: 2,
                   boxShadow: 2,
                   '&:hover': {
                     boxShadow: 4,
+                    transform: 'translateY(-4px)',
                     transition: 'all 0.3s ease-in-out'
                   }
                 }}
               >
-                {/* Header المنشور */}
-                <CardContent sx={{ pb: 1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Avatar
-                        src={post.clubDetails?.image_url}
-                        sx={{ 
-                          bgcolor: 'primary.main', 
-                          mr: 2,
-                          width: 50,
-                          height: 50
-                        }}
-                      >
-                        {post.clubDetails?.name ? post.clubDetails.name[0].toUpperCase() : 'C'}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                          {post.clubDetails?.name || `Club ${post.club.club_id}`}
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Chip 
-                            label={post.clubDetails?.category || 'General'} 
-                            size="small" 
-                            color="primary" 
-                            variant="outlined"
-                          />
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
-                            <AccessTime sx={{ fontSize: 14, mr: 0.5 }} />
-                            {formatDate(post.date_post)}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Box>
-                    <IconButton>
-                      <MoreVert />
-                    </IconButton>
-                  </Box>
+                <CardMedia
+                  component="img"
+                  sx={{ height: 200, objectFit: 'cover' }}
+                  image={club.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}
+                  alt={club.name}
+                />
 
-                  {/* محتوى المنشور */}
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      {post.title}
+                <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1 }}>
+                      {club.name}
                     </Typography>
-                    <Typography variant="body1" color="text.secondary">
-                      {truncateText(post.content)}
-                    </Typography>
-                  </Box>
-                </CardContent>
-
-                {/* صورة المنشور */}
-                {post.image_url && (
-                  <CardMedia
-                    component="img"
-                    sx={{ 
-                      height: 300,
-                      objectFit: 'cover'
-                    }}
-                    image={post.image_url}
-                    alt={post.title}
-                  />
-                )}
-
-                <Divider />
-
-                {/* إجراءات المنشور */}
-                <CardActions sx={{ justifyContent: 'space-between', px: 2 }}>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <IconButton size="small" color="primary">
-                      <FavoriteOutlined />
-                    </IconButton>
-                    <IconButton size="small" color="primary">
-                      <ChatBubbleOutline />
-                    </IconButton>
-                    <IconButton size="small" color="primary">
-                      <Share />
-                    </IconButton>
+                    <Chip
+                      label={club.category}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
                   </Box>
 
-                  {/* معلومات النادي */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LocationOn sx={{ fontSize: 16, color: 'text.secondary' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      {post.clubDetails?.city || 'Unknown'}
-                    </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Chip
+                      label="✅ Member"
+                      size="small"
+                      color="success"
+                      sx={{ fontWeight: 'bold' }}
+                    />
                   </Box>
-                </CardActions>
 
-                {/* معلومات إضافية */}
-                <Box sx={{ px: 2, pb: 2 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Posted by: {post.clubDetails?.creator?.username || 'Unknown'} • 
-                    Club created: {post.clubDetails ? formatDate(post.clubDetails.creation_date) : 'Unknown'}
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2, flex: 1 }}
+                  >
+                    {club.description}
                   </Typography>
-                </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      📍 {club.city}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      📅 Club created {formatDate(club.creation_date)}
+                    </Typography>
+                    {club.joinDate && (
+                      <Typography variant="body2" color="success.main">
+                        🎉 You joined {formatDate(club.joinDate)}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar
+                      sx={{ bgcolor: 'secondary.main', mr: 1, width: 32, height: 32 }}
+                    >
+                      {club.creator?.username ? club.creator.username[0].toUpperCase() : 'C'}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Created by
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                        {club.creator?.username || 'Unknown'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<PostAdd />}
+                    onClick={() => handleCreatePost(club)}
+                    sx={{ mt: 'auto' }}
+                    fullWidth
+                  >
+                    Create Post
+                  </Button>
+                </CardContent>
               </Card>
             </Grid>
           ))}
         </Grid>
       ) : (
         <Box sx={{ textAlign: 'center', mt: 8 }}>
-          <Groups sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h5" color="text.secondary" sx={{ mb: 2 }}>
-            No Posts Available
+            🏟️ No Joined Clubs Yet
           </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            {joinedClubs.length === 0 
-              ? "You haven't joined any clubs yet. Join clubs to see their posts here!"
-              : `You've joined ${joinedClubs.length} club(s), but they haven't posted anything yet.`}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Explore clubs and join them to see their latest posts and updates.
+          <Typography variant="body1" color="text.secondary">
+            You haven't joined any clubs yet. Explore and join clubs that interest you!
           </Typography>
         </Box>
       )}
+
+      <Dialog
+        open={openCreatePost}
+        onClose={handleCloseCreatePost}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PostAdd />
+          Create New Post
+        </DialogTitle>
+
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {selectedClub && (
+              <Alert severity="info">
+                Creating post for: <strong>{selectedClub.name}</strong>
+              </Alert>
+            )}
+
+            <TextField
+              label="Post Content *"
+              value={postData.content}
+              onChange={(e) => handleInputChange('content', e.target.value)}
+              fullWidth
+              multiline
+              rows={5}
+              required
+              placeholder="Write your post content here..."
+            />
+
+            <TextField
+              label="Image URL (Optional)"
+              value={postData.image_url}
+              onChange={(e) => handleInputChange('image_url', e.target.value)}
+              fullWidth
+              placeholder="https://example.com/image.jpg"
+              InputProps={{
+                startAdornment: <span style={{ marginRight: 8 }}>🖼️</span>
+              }}
+            />
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseCreatePost} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handlePostSubmit}
+            variant="contained"
+            startIcon={<PostAdd />}
+            disabled={submitting || !postData.content.trim()}
+          >
+            {submitting ? 'Creating...' : 'Create Post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
 
-export default YourClubs;
+export default JoinClub;

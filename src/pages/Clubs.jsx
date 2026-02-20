@@ -13,7 +13,6 @@ const Clubs = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        
         const clubsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/clubs/", {
           headers: {
             "Content-Type": "application/json",
@@ -21,7 +20,6 @@ const Clubs = () => {
           },
         });
 
-        
         const userClubsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/userclubs/", {
           headers: {
             "Content-Type": "application/json",
@@ -29,7 +27,6 @@ const Clubs = () => {
           },
         });
 
-        
         const requestsResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/my-membership-requests/", {
           headers: {
             "Content-Type": "application/json",
@@ -44,16 +41,42 @@ const Clubs = () => {
 
         if (userClubsResponse.ok) {
           const userClubsData = await userClubsResponse.json();
-          setUserClubs(userClubsData.map(uc => uc.club));
+          console.log("User clubs data:", userClubsData); // ✅ Debug log
+
+          // ✅ Handle both cases: club as object or club as ID
+          const clubIds = userClubsData.map(uc => {
+            // If club is an object with club_id property
+            if (uc.club && typeof uc.club === 'object') {
+              return uc.club.club_id;
+            }
+            // If club is just an ID
+            return uc.club;
+          });
+
+          setUserClubs(clubIds);
         }
 
         if (requestsResponse.ok) {
           const requestsData = await requestsResponse.json();
-          setPendingRequests(requestsData.filter(req => req.status === 'pending').map(req => req.club.club_id));
+          console.log("Membership requests data:", requestsData); // ✅ Debug log
+
+          // ✅ Handle both cases: club as object or club as ID
+          const pendingClubIds = requestsData
+            .filter(req => req.status === 'pending')
+            .map(req => {
+              // If club is an object with club_id property
+              if (req.club && typeof req.club === 'object') {
+                return req.club.club_id;
+              }
+              // If club is just an ID
+              return req.club;
+            });
+
+          setPendingRequests(pendingClubIds);
         }
 
       } catch (error) {
-        console.error(error);
+        console.error("Error fetching data:", error);
       } finally {
         setLoading(false);
       }
@@ -78,12 +101,12 @@ const Clubs = () => {
       });
 
       if (response.ok) {
-        
         setPendingRequests(prev => [...prev, clubId]);
         alert("Join request sent successfully!");
       } else {
         const errorData = await response.json();
-        alert(errorData.error || "Failed to send join request");
+        console.error("Join request error:", errorData); // ✅ Debug log
+        alert(errorData.error || errorData.club_id?.[0] || "Failed to send join request");
       }
 
     } catch (error) {
@@ -95,38 +118,39 @@ const Clubs = () => {
   };
 
   const getClubStatus = (club) => {
-    if (club.creator.id === user?.id) {
+    // ✅ Check if user exists and club has creator
+    if (club.creator && user && club.creator.id === user.id) {
       return { type: 'owner', label: '👑 Your Club', color: 'warning' };
     }
-    
-    
+
+    // ✅ Check if user is a member
     if (userClubs.includes(club.club_id)) {
       return { type: 'member', label: '✅ Member', color: 'success' };
     }
-    
-   
+
+    // ✅ Check if request is pending
     if (pendingRequests.includes(club.club_id)) {
       return { type: 'pending', label: '⏳ Request Pending', color: 'info' };
     }
-    
-   
+
+    // ✅ Available to join
     return { type: 'available', label: 'Join Club', color: 'primary' };
   };
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
   return (
-    <Box 
-      flex={4} 
+    <Box
+      flex={4}
       p={{ xs: 0, md: 2 }}
-      sx={{ 
+      sx={{
         minHeight: '100vh',
         bgcolor: 'background.default'
       }}
@@ -134,7 +158,7 @@ const Clubs = () => {
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
         All Clubs
       </Typography>
-      
+
       {loading ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((item) => (
@@ -156,8 +180,8 @@ const Clubs = () => {
             const status = getClubStatus(club);
             return (
               <Grid item xs={12} sm={6} md={4} key={club.club_id}>
-                <Card 
-                  sx={{ 
+                <Card
+                  sx={{
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
@@ -172,52 +196,43 @@ const Clubs = () => {
                     }
                   }}
                 >
-                  {/* Club Image */}
                   <CardMedia
                     component="img"
-                    sx={{ 
-                      height: 200,
-                      objectFit: 'cover'
-                    }}
+                    sx={{ height: 200, objectFit: 'cover' }}
                     image={club.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}
                     alt={club.name}
                   />
 
-                  {/* Club Content */}
                   <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    {/* Header with Name and Category */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1 }}>
                         {club.name}
                       </Typography>
-                      <Chip 
-                        label={club.category} 
-                        size="small" 
-                        color="primary" 
+                      <Chip
+                        label={club.category}
+                        size="small"
+                        color="primary"
                         variant="outlined"
                       />
                     </Box>
 
-                    {/* Status Chip */}
                     <Box sx={{ mb: 2 }}>
-                      <Chip 
+                      <Chip
                         label={status.label}
-                        size="small" 
+                        size="small"
                         color={status.color}
                         sx={{ fontWeight: 'bold' }}
                       />
                     </Box>
 
-                    {/* Description */}
-                    <Typography 
-                      variant="body2" 
-                      color="text.secondary" 
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
                       sx={{ mb: 2, flex: 1 }}
                     >
                       {club.description}
                     </Typography>
 
-                    {/* Location and Date */}
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                         📍 {club.city}
@@ -227,27 +242,24 @@ const Clubs = () => {
                       </Typography>
                     </Box>
 
-                    {/* Creator Info */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Avatar 
-                        sx={{ 
-                          bgcolor: 'secondary.main', 
-                          mr: 1,
-                          width: 32,
-                          height: 32
-                        }}
-                      >
-                        {club.creator.username[0].toUpperCase()}
-                      </Avatar>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Created by
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                          {club.creator.username}
-                        </Typography>
+                    {/* ✅ Safe navigation for creator */}
+                    {club.creator && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Avatar
+                          sx={{ bgcolor: 'secondary.main', mr: 1, width: 32, height: 32 }}
+                        >
+                          {club.creator.username ? club.creator.username[0].toUpperCase() : 'C'}
+                        </Avatar>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Created by
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                            {club.creator.username || 'Unknown'}
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
+                    )}
 
                     {/* Join Button */}
                     {status.type === 'available' && (

@@ -1,5 +1,5 @@
-import { 
-  Box, Typography, Stack, Skeleton, Card, CardContent, CardMedia, Avatar, 
+import {
+  Box, Typography, Stack, Skeleton, Card, CardContent, CardMedia, Avatar,
   Chip, Grid, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Alert, Snackbar
 } from "@mui/material";
@@ -12,12 +12,11 @@ const JoinClub = () => {
   const [loading, setLoading] = useState(true);
   const [joinedClubs, setJoinedClubs] = useState([]);
   const [clubsDetails, setClubsDetails] = useState([]);
-  
+
   // Post creation states
   const [openCreatePost, setOpenCreatePost] = useState(false);
   const [selectedClub, setSelectedClub] = useState(null);
   const [postData, setPostData] = useState({
-    title: '',
     content: '',
     image_url: ''
   });
@@ -31,7 +30,6 @@ const JoinClub = () => {
   useEffect(() => {
     const fetchJoinedClubs = async () => {
       try {
-        // Fetch user's joined clubs
         const response = await fetch("http://127.0.0.1:8000/yalahntla9aw/userclubs/", {
           headers: {
             "Content-Type": "application/json",
@@ -44,29 +42,29 @@ const JoinClub = () => {
         const joinedData = await response.json();
         setJoinedClubs(joinedData);
 
-        // Fetch details for each club
         if (joinedData.length > 0) {
           const clubDetailsPromises = joinedData.map(async (joinRecord) => {
             try {
-              const clubResponse = await fetch(`http://127.0.0.1:8000/yalahntla9aw/clubs/${joinRecord.club}/`, {
+              // ✅ joinRecord.club is the club_id, not an object
+              const clubResponse = await fetch(`http://127.0.0.1:8000/yalahntla9aw/clubs/${joinRecord.club.club_id}/`, {
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: accessToken ? `Bearer ${accessToken}` : "",
                 },
               });
-              
+
               if (clubResponse.ok) {
                 const clubData = await clubResponse.json();
                 return {
                   ...clubData,
-                  joinDate: joinRecord.user.date_joined,
+                  joinDate: joinRecord.date_joined,  // ✅ Use date_joined from UserClub model
                   joinId: joinRecord.id,
                   joinedUser: joinRecord.user
                 };
               }
               return null;
             } catch (error) {
-              console.error(`Error fetching club ${joinRecord.club}:`, error);
+              console.error(`Error fetching club ${joinRecord.club.club_id}:`, error);
               return null;
             }
           });
@@ -87,10 +85,10 @@ const JoinClub = () => {
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -103,17 +101,17 @@ const JoinClub = () => {
     setOpenCreatePost(false);
     setSelectedClub(null);
     setPostData({
-      title: '',
       content: '',
       image_url: ''
     });
   };
 
   const handlePostSubmit = async () => {
-    if (!postData.title.trim() || !postData.content.trim()) {
+    // ✅ Only validate content (no title field in backend)
+    if (!postData.content.trim()) {
       setSnackbar({
         open: true,
-        message: 'Please fill in title and content',
+        message: 'Please fill in the content',
         severity: 'error'
       });
       return;
@@ -121,59 +119,60 @@ const JoinClub = () => {
 
     setSubmitting(true);
     try {
-      // Create the post
+      // ✅ Send exactly what backend expects
+      const body = {
+        content: postData.content,
+        club_id: selectedClub.club_id,
+      };
+
+      if (postData.image_url.trim()) {
+        body.image_url = postData.image_url;
+      }
+
       const postResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/posts/", {
         method: 'POST',
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          title: postData.title,
-          content: postData.content,
-          image_url: postData.image_url || null,
-          club: selectedClub.club_id,
-          author: user.id,
-          status: 'pending' // Post needs approval from club creator
-        }),
+        body: JSON.stringify(body),
       });
 
-      if (postResponse.ok) {
-        const newPost = await postResponse.json();
-        
-        // Send notification to club creator
-        const notificationResponse = await fetch("http://127.0.0.1:8000/yalahntla9aw/notifications/", {
+      if (!postResponse.ok) {
+        const errorData = await postResponse.json();
+        console.error("Backend error:", errorData);
+        throw new Error(JSON.stringify(errorData));
+      }
+
+      const newPost = await postResponse.json();
+      console.log("Post created:", newPost);
+
+      // ✅ Send notification (optional)
+      try {
+        await fetch("http://127.0.0.1:8000/yalahntla9aw/notifications/", {
           method: 'POST',
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
-            user: selectedClub.creator.id,
-            club: selectedClub.club_id,
-            message: `New post "${postData.title}" submitted by ${user.username} and awaiting your approval.`,
-            notification_type: 'post_approval_request'
+            user_id: selectedClub.creator.id,
+            club_id: selectedClub.club_id,
+            message: `New post submitted by ${user.username} in ${selectedClub.name}.`,
           }),
         });
-
-        if (notificationResponse.ok) {
-          setSnackbar({
-            open: true,
-            message: 'Post submitted successfully! Waiting for approval from club creator.',
-            severity: 'success'
-          });
-        } else {
-          setSnackbar({
-            open: true,
-            message: 'Post created but failed to notify club creator.',
-            severity: 'warning'
-          });
-        }
-        
-        handleCloseCreatePost();
-      } else {
-        throw new Error('Failed to create post');
+      } catch (notifError) {
+        console.warn("Notification failed:", notifError);
       }
+
+      setSnackbar({
+        open: true,
+        message: 'Post created successfully!',
+        severity: 'success'
+      });
+
+      handleCloseCreatePost();
+
     } catch (error) {
       console.error('Error creating post:', error);
       setSnackbar({
@@ -194,10 +193,10 @@ const JoinClub = () => {
   };
 
   return (
-    <Box 
-      flex={4} 
+    <Box
+      flex={4}
       p={{ xs: 0, md: 2 }}
-      sx={{ 
+      sx={{
         minHeight: '100vh',
         bgcolor: 'background.default'
       }}
@@ -205,7 +204,7 @@ const JoinClub = () => {
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
         Clubs I Joined
       </Typography>
-      
+
       {loading ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((item) => (
@@ -225,8 +224,8 @@ const JoinClub = () => {
         <Grid container spacing={3}>
           {clubsDetails.map((club) => (
             <Grid item xs={12} sm={6} md={4} key={club.club_id}>
-              <Card 
-                sx={{ 
+              <Card
+                sx={{
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
@@ -239,52 +238,43 @@ const JoinClub = () => {
                   }
                 }}
               >
-                {/* Club Image */}
                 <CardMedia
                   component="img"
-                  sx={{ 
-                    height: 200,
-                    objectFit: 'cover'
-                  }}
+                  sx={{ height: 200, objectFit: 'cover' }}
                   image={club.image_url || 'https://via.placeholder.com/300x200?text=No+Image'}
                   alt={club.name}
                 />
 
-                {/* Club Content */}
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  {/* Header with Name and Category */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1 }}>
                       {club.name}
                     </Typography>
-                    <Chip 
-                      label={club.category} 
-                      size="small" 
-                      color="primary" 
+                    <Chip
+                      label={club.category}
+                      size="small"
+                      color="primary"
                       variant="outlined"
                     />
                   </Box>
 
-                  {/* Member Badge */}
                   <Box sx={{ mb: 2 }}>
-                    <Chip 
-                      label="✅ Member" 
-                      size="small" 
-                      color="success" 
+                    <Chip
+                      label="✅ Member"
+                      size="small"
+                      color="success"
                       sx={{ fontWeight: 'bold' }}
                     />
                   </Box>
 
-                  {/* Description */}
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary" 
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
                     sx={{ mb: 2, flex: 1 }}
                   >
                     {club.description}
                   </Typography>
 
-                  {/* Location and Creation Date */}
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                       📍 {club.city}
@@ -299,15 +289,9 @@ const JoinClub = () => {
                     )}
                   </Box>
 
-                  {/* Creator Info */}
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar 
-                      sx={{ 
-                        bgcolor: 'secondary.main', 
-                        mr: 1,
-                        width: 32,
-                        height: 32
-                      }}
+                    <Avatar
+                      sx={{ bgcolor: 'secondary.main', mr: 1, width: 32, height: 32 }}
                     >
                       {club.creator?.username ? club.creator.username[0].toUpperCase() : 'C'}
                     </Avatar>
@@ -321,7 +305,6 @@ const JoinClub = () => {
                     </Box>
                   </Box>
 
-                  {/* Create Post Button */}
                   <Button
                     variant="contained"
                     startIcon={<PostAdd />}
@@ -347,72 +330,75 @@ const JoinClub = () => {
         </Box>
       )}
 
-      {/* Create Post Dialog */}
-      <Dialog 
-        open={openCreatePost} 
+      {/* ✅ Create Post Dialog - removed title field */}
+      <Dialog
+        open={openCreatePost}
         onClose={handleCloseCreatePost}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          Create New Post for {selectedClub?.name}
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PostAdd />
+          Create New Post
         </DialogTitle>
+
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
+            {selectedClub && (
+              <Alert severity="info">
+                Creating post for: <strong>{selectedClub.name}</strong>
+              </Alert>
+            )}
+
             <TextField
-              label="Post Title"
-              value={postData.title}
-              onChange={(e) => handleInputChange('title', e.target.value)}
-              fullWidth
-              required
-            />
-            
-            <TextField
-              label="Post Content"
+              label="Post Content *"
               value={postData.content}
               onChange={(e) => handleInputChange('content', e.target.value)}
               fullWidth
               multiline
-              rows={4}
+              rows={5}
               required
+              placeholder="Write your post content here..."
             />
-            
+
             <TextField
               label="Image URL (Optional)"
               value={postData.image_url}
               onChange={(e) => handleInputChange('image_url', e.target.value)}
               fullWidth
               placeholder="https://example.com/image.jpg"
+              InputProps={{
+                startAdornment: <span style={{ marginRight: 8 }}>🖼️</span>
+              }}
             />
-
-            <Alert severity="info">
-              Your post will be sent to the club creator for approval before it becomes visible to other members.
-            </Alert>
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCreatePost}>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseCreatePost} disabled={submitting}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handlePostSubmit}
             variant="contained"
-            disabled={submitting}
+            startIcon={<PostAdd />}
+            disabled={submitting || !postData.content.trim()}
           >
-            {submitting ? 'Submitting...' : 'Submit Post'}
+            {submitting ? 'Creating...' : 'Create Post'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert 
-          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
           severity={snackbar.severity}
+          variant="filled"
         >
           {snackbar.message}
         </Alert>
